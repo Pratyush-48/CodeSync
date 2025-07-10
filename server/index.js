@@ -170,7 +170,7 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-app.use(express.static(path.join(_dirname,"/client/build")))
+app.use(express.static(path.join(__dirname,"/client/build")))
 app.get('*',(_,res)=>{
-  res.sendFile(path.resolve(_dirname,"client","build","index.html"))
+  res.sendFile(path.resolve(__dirname,"client","build","index.html"))
 })
