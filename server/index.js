@@ -172,5 +172,5 @@ server.listen(PORT, () => {
 });
 app.use(express.static(path.join(_dirname,"/client/build")))
 app.get('*',(_,res)=>{
-  res.sendFile(path.resolve(_dirname,"client","dist","index.html"))
+  res.sendFile(path.resolve(_dirname,"client","build","index.html"))
 })
