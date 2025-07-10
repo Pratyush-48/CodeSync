@@ -8,7 +8,7 @@ require('dotenv').config();
 const path = require('path');
 const app = express();
 const server = http.createServer(app);
-const _dirname = path.resolve();
+const __dirname = path.resolve();
 // Language configuration
 const languageConfig = {
   python3: { versionIndex: '3' },
