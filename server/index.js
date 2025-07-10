@@ -5,10 +5,10 @@ const cors = require('cors');
 const axios = require('axios');
 const ACTIONS = require('./Actions');
 require('dotenv').config();
-
+const path = require('path');
 const app = express();
 const server = http.createServer(app);
-
+const _dirname = path.resolve();
 // Language configuration
 const languageConfig = {
   python3: { versionIndex: '3' },
@@ -31,6 +31,10 @@ const languageConfig = {
 
 app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(_dirname,"/client/build")))
+app.get('*',(_,res)=>{
+  res.sendFile(path.resolve(_dirname,"client","dist","index.html"))
+})
 
 const io = new Server(server, {
   cors: {

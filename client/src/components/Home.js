@@ -40,7 +40,7 @@ function Home() {
           />
         </div>
         
-        <h2 style={styles.title}>Collaborative Code Editor</h2>
+        <h2 style={styles.title}>CodeSync</h2>
         
         <div style={styles.formGroup}>
           <label style={styles.label}>Room ID</label>
