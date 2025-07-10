@@ -8,7 +8,7 @@ require('dotenv').config();
 const path = require('path');
 const app = express();
 const server = http.createServer(app);
-const __dirname = path.resolve();
+const _dirname = path.resolve();
 // Language configuration
 const languageConfig = {
   python3: { versionIndex: '3' },
@@ -170,7 +170,10 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-app.use(express.static(path.join(__dirname,"/client/build")))
-app.get('*',(_,res)=>{
-  res.sendFile(path.resolve(__dirname,"client","build","index.html"))
-})
+const buildPath = path.join(__dirname, '..', 'client', 'build');
+
+app.use(express.static(buildPath));
+
+app.get('*', (_, res) => {
+  res.sendFile(path.join(buildPath, 'index.html'));
+});
