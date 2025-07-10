@@ -38,7 +38,7 @@ app.get('*',(_,res)=>{
 
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:3000',
+    origin: 'https://codesync-hmt6.onrender.com',
     methods: ['GET', 'POST'],
   },
   connectionStateRecovery: {
