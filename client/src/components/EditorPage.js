@@ -40,33 +40,33 @@ function EditorPage() {
   const [selectedLanguage, setSelectedLanguage] = useState("python3");
   const codeRef = useRef(null);
 
-  const Location = useLocation();
+  const location = useLocation();
   const navigate = useNavigate();
   const { roomId } = useParams();
 
   const socketRef = useRef(null);
 
   useEffect(() => {
+    const handleErrors = (err) => {
+      console.log("Error", err);
+      toast.error("Socket connection failed, Try again later");
+      navigate("/");
+    };
+
     const init = async () => {
       socketRef.current = await initSocket();
-      socketRef.current.on("connect_error", (err) => handleErrors(err));
-      socketRef.current.on("connect_failed", (err) => handleErrors(err));
-
-      const handleErrors = (err) => {
-        console.log("Error", err);
-        toast.error("Socket connection failed, Try again later");
-        navigate("/");
-      };
+      socketRef.current.on("connect_error", handleErrors);
+      socketRef.current.on("connect_failed", handleErrors);
 
       socketRef.current.emit(ACTIONS.JOIN, {
         roomId,
-        username: Location.state?.username,
+        username: location.state?.username,
       });
 
       socketRef.current.on(
         ACTIONS.JOINED,
         ({ clients, username, socketId }) => {
-          if (username !== Location.state?.username) {
+          if (username !== location.state?.username) {
             toast.success(`${username} joined the room.`);
           }
           setClients(clients);
@@ -87,13 +87,15 @@ function EditorPage() {
     init();
 
     return () => {
-      socketRef.current && socketRef.current.disconnect();
-      socketRef.current.off(ACTIONS.JOINED);
-      socketRef.current.off(ACTIONS.DISCONNECTED);
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current.off(ACTIONS.JOINED);
+        socketRef.current.off(ACTIONS.DISCONNECTED);
+      }
     };
-  }, []);
+  }, [roomId, location.state, navigate]);
 
-  if (!Location.state) {
+  if (!location.state) {
     return <Navigate to="/" />;
   }
 
@@ -114,7 +116,7 @@ function EditorPage() {
   const runCode = async () => {
     setIsCompiling(true);
     try {
-      const response = await axios.post("http://localhost:5000/compile", {
+      const response = await axios.post("https://codesync-hmt6.onrender.com/compile", {
         code: codeRef.current,
         language: selectedLanguage,
       });
