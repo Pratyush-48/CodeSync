@@ -28,37 +28,55 @@ const languageConfig = {
 };
 
 // Enable CORS
-app.use(cors());
+app.use(cors({
+  origin: ["https://codesync-hmt6.onrender.com", "http://localhost:3000"],
+  methods: ["GET", "POST"],
+  credentials: true
+}));
 
 // Parse JSON bodies
 app.use(express.json());
 
+// Add a root route handler to fix "Cannot GET /" error
+app.get("/", (req, res) => {
+  res.json({ message: "CodeSync Server is running!" });
+});
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({ status: "OK", message: "Server is healthy" });
+});
+
 const io = new Server(server, {
   cors: {
-    origin: "https://codesync-hmt6.onrender.com",
+    origin: ["https://codesync-hmt6.onrender.com", "http://localhost:3000"],
     methods: ["GET", "POST"],
+    credentials: true
   },
 });
 
 const userSocketMap = {};
 const getAllConnectedClients = (roomId) => {
-  return Array.from(io.sockets.adapter.rooms.get(roomId) || []).map(
-    (socketId) => {
-      return {
-        socketId,
-        username: userSocketMap[socketId],
-      };
-    }
-  );
+  const room = io.sockets.adapter.rooms.get(roomId);
+  if (!room) return [];
+  
+  return Array.from(room).map((socketId) => {
+    return {
+      socketId,
+      username: userSocketMap[socketId],
+    };
+  });
 };
 
 io.on("connection", (socket) => {
-  // console.log('Socket connected', socket.id);
+  console.log('Socket connected', socket.id);
+  
   socket.on(ACTIONS.JOIN, ({ roomId, username }) => {
     userSocketMap[socket.id] = username;
     socket.join(roomId);
     const clients = getAllConnectedClients(roomId);
-    // notify that new user join
+    
+    // notify that new user joined
     clients.forEach(({ socketId }) => {
       io.to(socketId).emit(ACTIONS.JOINED, {
         clients,
@@ -72,44 +90,69 @@ io.on("connection", (socket) => {
   socket.on(ACTIONS.CODE_CHANGE, ({ roomId, code }) => {
     socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
   });
-  // when new user join the room all the code which are there are also shows on that persons editor
+  
+  // when new user joins the room, sync the existing code
   socket.on(ACTIONS.SYNC_CODE, ({ socketId, code }) => {
     io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
   });
 
-  // leave room
+  // handle disconnection
   socket.on("disconnecting", () => {
     const rooms = [...socket.rooms];
-    // leave all the room
     rooms.forEach((roomId) => {
       socket.in(roomId).emit(ACTIONS.DISCONNECTED, {
         socketId: socket.id,
         username: userSocketMap[socket.id],
       });
     });
-
     delete userSocketMap[socket.id];
-    socket.leave();
+  });
+
+  socket.on("disconnect", () => {
+    console.log('Socket disconnected', socket.id);
   });
 });
 
 app.post("/compile", async (req, res) => {
   const { code, language } = req.body;
 
+  // Validate request
+  if (!code || !language) {
+    return res.status(400).json({ error: "Code and language are required" });
+  }
+
+  if (!languageConfig[language]) {
+    return res.status(400).json({ error: "Unsupported language" });
+  }
+
   try {
     const response = await axios.post("https://api.jdoodle.com/v1/execute", {
       script: code,
       language: language,
       versionIndex: languageConfig[language].versionIndex,
-      clientId: process.env.jDoodle_clientId,
-      clientSecret: process.env.jDoodle_clientSecret,
+      clientId: process.env.JDOODLE_CLIENT_ID,
+      clientSecret: process.env.JDOODLE_CLIENT_SECRET,
     });
 
     res.json(response.data);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to compile code" });
+    console.error("Compilation error:", error.response?.data || error.message);
+    res.status(500).json({ 
+      error: "Failed to compile code",
+      details: error.response?.data || error.message
+    });
   }
+});
+
+// Handle 404 errors
+app.use((req, res) => {
+  res.status(404).json({ error: "Endpoint not found" });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: "Something went wrong!" });
 });
 
 const PORT = process.env.PORT || 5000;
