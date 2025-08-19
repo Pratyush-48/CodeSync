@@ -46,6 +46,14 @@ function EditorPage() {
 
   const socketRef = useRef(null);
 
+  // Get backend URL based on environment
+  const getBackendURL = () => {
+    return process.env.REACT_APP_BACKEND_URL ||
+      (process.env.NODE_ENV === 'production'
+        ? 'https://codesync-hmt6.onrender.com'
+        : 'http://localhost:5000');
+  };
+
   useEffect(() => {
     const handleErrors = (err) => {
       console.log("Error", err);
@@ -54,36 +62,57 @@ function EditorPage() {
     };
 
     const init = async () => {
-      socketRef.current = await initSocket();
-      socketRef.current.on("connect_error", handleErrors);
-      socketRef.current.on("connect_failed", handleErrors);
-
-      socketRef.current.emit(ACTIONS.JOIN, {
-        roomId,
-        username: location.state?.username,
-      });
-
-      socketRef.current.on(
-        ACTIONS.JOINED,
-        ({ clients, username, socketId }) => {
-          if (username !== location.state?.username) {
-            toast.success(`${username} joined the room.`);
-          }
-          setClients(clients);
-          socketRef.current.emit(ACTIONS.SYNC_CODE, {
-            code: codeRef.current,
-            socketId,
-          });
-        }
-      );
-
-      socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
-        toast.success(`${username} left the room`);
-        setClients((prev) => {
-          return prev.filter((client) => client.socketId !== socketId);
+      try {
+        socketRef.current = await initSocket();
+        
+        // Set up error handlers
+        socketRef.current.on("connect_error", handleErrors);
+        socketRef.current.on("connect_failed", handleErrors);
+        
+        // Handle connection success
+        socketRef.current.on("connect", () => {
+          console.log("Connected to server");
         });
-      });
+
+        // Join the room
+        socketRef.current.emit(ACTIONS.JOIN, {
+          roomId,
+          username: location.state?.username,
+        });
+
+        // Handle user joined event
+        socketRef.current.on(
+          ACTIONS.JOINED,
+          ({ clients, username, socketId }) => {
+            if (username !== location.state?.username) {
+              toast.success(`${username} joined the room.`);
+            }
+            setClients(clients);
+            
+            // Sync code with new user
+            if (codeRef.current) {
+              socketRef.current.emit(ACTIONS.SYNC_CODE, {
+                code: codeRef.current,
+                socketId,
+              });
+            }
+          }
+        );
+
+        // Handle user disconnected event
+        socketRef.current.on(ACTIONS.DISCONNECTED, ({ socketId, username }) => {
+          toast.success(`${username} left the room`);
+          setClients((prev) => {
+            return prev.filter((client) => client.socketId !== socketId);
+          });
+        });
+
+      } catch (error) {
+        console.error("Failed to initialize socket:", error);
+        handleErrors(error);
+      }
     };
+
     init();
 
     return () => {
@@ -91,6 +120,9 @@ function EditorPage() {
         socketRef.current.disconnect();
         socketRef.current.off(ACTIONS.JOINED);
         socketRef.current.off(ACTIONS.DISCONNECTED);
+        socketRef.current.off("connect_error");
+        socketRef.current.off("connect_failed");
+        socketRef.current.off("connect");
       }
     };
   }, [roomId, location.state, navigate]);
@@ -115,16 +147,37 @@ function EditorPage() {
 
   const runCode = async () => {
     setIsCompiling(true);
+    setOutput("Compiling...");
+    
     try {
-      const response = await axios.post("https://codesync-hmt6.onrender.com/compile", {
+      const backendURL = getBackendURL();
+      const response = await axios.post(`${backendURL}/compile`, {
         code: codeRef.current,
         language: selectedLanguage,
       });
+      
       console.log("Backend response:", response.data);
-      setOutput(response.data.output || JSON.stringify(response.data));
+      
+      // Handle different response formats from JDoodle
+      if (response.data.output !== undefined) {
+        setOutput(response.data.output);
+      } else if (response.data.error) {
+        setOutput(`Error: ${response.data.error}`);
+      } else {
+        setOutput(JSON.stringify(response.data));
+      }
     } catch (error) {
       console.error("Error compiling code:", error);
-      setOutput(error.response?.data?.error || "An error occurred");
+      
+      if (error.response?.data?.error) {
+        setOutput(`Error: ${error.response.data.error}`);
+      } else if (error.response?.data) {
+        setOutput(`Error: ${JSON.stringify(error.response.data)}`);
+      } else if (error.message) {
+        setOutput(`Error: ${error.message}`);
+      } else {
+        setOutput("An unexpected error occurred");
+      }
     } finally {
       setIsCompiling(false);
     }
@@ -132,6 +185,10 @@ function EditorPage() {
 
   const toggleCompileWindow = () => {
     setIsCompileWindowOpen(!isCompileWindowOpen);
+  };
+
+  const clearOutput = () => {
+    setOutput("");
   };
 
   return (
@@ -170,7 +227,8 @@ function EditorPage() {
         {/* Editor panel */}
         <div className="col-md-10 text-light d-flex flex-column">
           {/* Language selector */}
-          <div className="bg-dark p-2 d-flex justify-content-end">
+          <div className="bg-dark p-2 d-flex justify-content-between align-items-center">
+            <span>Room: {roomId}</span>
             <select
               className="form-select w-auto"
               value={selectedLanguage}
@@ -229,12 +287,19 @@ function EditorPage() {
             >
               {isCompiling ? "Compiling..." : "Run Code"}
             </button>
+            <button 
+              className="btn btn-warning me-2"
+              onClick={clearOutput}
+              disabled={isCompiling}
+            >
+              Clear Output
+            </button>
             <button className="btn btn-secondary" onClick={toggleCompileWindow}>
               Close
             </button>
           </div>
         </div>
-        <pre className="bg-secondary p-3 rounded">
+        <pre className="bg-secondary p-3 rounded" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
           {output || "Output will appear here after compilation"}
         </pre>
       </div>
