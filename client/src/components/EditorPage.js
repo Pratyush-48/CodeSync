@@ -164,41 +164,21 @@ function EditorPage() {
   };
 
   const runCode = async () => {
-    if (!socketConnected) {
-      toast.error("Connection lost. Trying to reconnect...");
-      return;
-    }
-
     setIsCompiling(true);
     try {
-      const response = await axios.post("https://codesync-hmt6.onrender.com", {
+      const response = await axios.post("http://localhost:5000/compile", {
         code: codeRef.current,
         language: selectedLanguage,
-        roomId
       });
-      
-      const result = response.data.output || JSON.stringify(response.data);
-      setOutput(result);
-      outputRef.current = result;
-      
-      // socketRef.current.emit(ACTIONS.OUTPUT_CHANGE, {
-      //   roomId,
-      //   output: result
-      // });
+      console.log("Backend response:", response.data);
+      setOutput(response.data.output || JSON.stringify(response.data));
     } catch (error) {
-      const errorMessage = error.response?.data?.error || "An error occurred";
-      setOutput(errorMessage);
-      outputRef.current = errorMessage;
-      
-      // socketRef.current.emit(ACTIONS.OUTPUT_CHANGE, {
-      //   roomId,
-      //   output: errorMessage
-      // });
+      console.error("Error compiling code:", error);
+      setOutput(error.response?.data?.error || "An error occurred");
     } finally {
       setIsCompiling(false);
     }
   };
-
   const toggleCompileWindow = () => {
     setIsCompileWindowOpen(!isCompileWindowOpen);
   };
