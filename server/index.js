@@ -60,12 +60,13 @@ const userSocketMap = {};
 const roomSocketMap = {};
 
 const getAllConnectedClients = (roomId) => {
-  return Array.from(io.sockets.adapter.rooms.get(roomId) || []).map(
-    (socketId) => ({
-      socketId,
-      username: userSocketMap[socketId],
-    })
-  );
+  const room = io.sockets.adapter.rooms.get(roomId);
+  if (!room) return [];
+  
+  return Array.from(room).map((socketId) => ({
+    socketId,
+    username: userSocketMap[socketId],
+  }));
 };
 
 // Socket.io connection handling
@@ -83,6 +84,8 @@ io.on('connection', (socket) => {
     socket.join(roomId);
 
     const clients = getAllConnectedClients(roomId);
+    
+    // Notify all clients in the room about the new user
     clients.forEach(({ socketId }) => {
       io.to(socketId).emit(ACTIONS.JOINED, {
         clients,
@@ -92,18 +95,29 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Handle code changes and broadcast to room
   socket.on(ACTIONS.CODE_CHANGE, ({ roomId, code }) => {
     socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
   });
 
+  // Sync code with a specific client (when they join)
   socket.on(ACTIONS.SYNC_CODE, ({ code, socketId }) => {
-    io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
+    if (io.sockets.sockets.has(socketId)) {
+      io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
+    }
   });
 
+  // Handle language changes and broadcast to room
   socket.on(ACTIONS.LANGUAGE_CHANGE, ({ roomId, language }) => {
     socket.in(roomId).emit(ACTIONS.LANGUAGE_CHANGE, { language });
   });
 
+  // Handle output changes and broadcast to room
+  socket.on(ACTIONS.OUTPUT_CHANGE, ({ roomId, output }) => {
+    socket.in(roomId).emit(ACTIONS.OUTPUT_CHANGE, { output });
+  });
+
+  // Handle user leaving intentionally
   socket.on(ACTIONS.LEAVE, () => {
     const roomId = roomSocketMap[socket.id];
     const username = userSocketMap[socket.id];
@@ -112,18 +126,21 @@ io.on('connection', (socket) => {
       socket.leave(roomId);
       const remainingClients = getAllConnectedClients(roomId);
       
-      io.to(roomId).emit(ACTIONS.DISCONNECTED, {
+      // Notify remaining clients
+      socket.to(roomId).emit(ACTIONS.DISCONNECTED, {
         socketId: socket.id,
         username,
         remainingClients
       });
       
+      // Clean up
       delete userSocketMap[socket.id];
       delete roomSocketMap[socket.id];
       socket.emit(ACTIONS.LEFT);
     }
   });
 
+  // Handle disconnection (network issues, etc.)
   socket.on('disconnect', () => {
     const roomId = roomSocketMap[socket.id];
     const username = userSocketMap[socket.id];
@@ -132,26 +149,51 @@ io.on('connection', (socket) => {
       socket.leave(roomId);
       const remainingClients = getAllConnectedClients(roomId);
       
-      io.to(roomId).emit(ACTIONS.DISCONNECTED, {
+      // Notify remaining clients
+      socket.to(roomId).emit(ACTIONS.DISCONNECTED, {
         socketId: socket.id,
         username,
         remainingClients
       });
       
+      // Clean up
       delete userSocketMap[socket.id];
       delete roomSocketMap[socket.id];
     }
+    
+    console.log('User disconnected:', socket.id);
+  });
+
+  // Handle connection errors
+  socket.on('connect_error', (err) => {
+    console.log('Connection error:', err.message);
   });
 });
 
 // API routes
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Server is running' });
+  res.json({ 
+    status: 'OK', 
+    message: 'CodeSync Server is running!',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+app.get('/api/rooms', (req, res) => {
+  const rooms = {};
+  io.sockets.adapter.rooms.forEach((_, roomId) => {
+    if (!io.sockets.adapter.sids.has(roomId)) { // Exclude individual socket rooms
+      rooms[roomId] = getAllConnectedClients(roomId);
+    }
+  });
+  res.json({ rooms });
 });
 
 app.post('/api/compile', async (req, res) => {
   const { code, language, roomId } = req.body;
 
+  // Validate request
   if (!code || !language) {
     return res.status(400).json({ error: 'Code and language are required' });
   }
@@ -169,32 +211,69 @@ app.post('/api/compile', async (req, res) => {
       clientSecret: process.env.JDOODLE_CLIENT_SECRET,
     });
 
+    // Broadcast output to all clients in the room if roomId is provided
     if (roomId) {
-      io.to(roomId).emit(ACTIONS.OUTPUT_CHANGE, {
-        output: response.data
-      });
+      const output = response.data.output || JSON.stringify(response.data);
+      io.to(roomId).emit(ACTIONS.OUTPUT_CHANGE, { output });
     }
 
     res.json(response.data);
   } catch (error) {
     console.error('Compilation error:', error);
+    
+    const errorMessage = error.response?.data?.error || error.message || 'Failed to compile code';
+    
+    // Broadcast error to all clients in the room if roomId is provided
+    if (roomId) {
+      io.to(roomId).emit(ACTIONS.OUTPUT_CHANGE, { 
+        output: `Error: ${errorMessage}` 
+      });
+    }
+    
     res.status(500).json({ 
       error: 'Failed to compile code',
-      details: error.response?.data || error.message 
+      details: errorMessage 
     });
   }
 });
 
-// Serve static files from React build directory
+// Serve static files from React build directory (for production)
 const buildPath = path.join(__dirname, '..', 'client', 'build');
 app.use(express.static(buildPath));
 
-// Handle React routing, return all requests to React app
+// Handle React routing - return all requests to React app (for client-side routing)
 app.get('*', (req, res) => {
   res.sendFile(path.join(buildPath, 'index.html'));
 });
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
+});
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📊 Health check available at http://localhost:${PORT}/api/health`);
+  
+  // Log environment info
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🔗 CORS enabled for: ${['https://codesync-hmt6.onrender.com', 'http://localhost:3000'].join(', ')}`);
 });
+
+// Graceful shutdown handling
+process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down server gracefully...');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
+});
+
+export default app;
