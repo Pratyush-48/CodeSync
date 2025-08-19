@@ -1,26 +1,29 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const axios = require('axios');
-const ACTIONS = require('./Actions');
-require('dotenv').config();
-const path = require('path');
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import axios from 'axios';
+import dotenv from 'dotenv';
+import path, { dirname } from 'path';
+import { fileURLToPath } from 'url';
+import ACTIONS from './Actions.js'; // 👈 must include .js extension
+
+dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const __dirname = path.resolve();
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// ✅ JDoodle supported languages with proper versionIndex
+// ✅ JDoodle supported languages
 const languageConfig = {
-  python3: { versionIndex: '3' },  // Python 3
-  java: { versionIndex: '4' },     // Java JDK 17
-  cpp: { versionIndex: '0' },      // C++17
-  nodejs: { versionIndex: '3' },   // Node.js 18.x
-  c: { versionIndex: '4' },        // GCC 13.x
-  ruby: { versionIndex: '0' },     // Ruby 3.x
-  go: { versionIndex: '0' },       // Go latest
-  php: { versionIndex: '3' },      // PHP 8.x
+  python3: { versionIndex: '3' },
+  java: { versionIndex: '4' },
+  cpp: { versionIndex: '0' },
+  nodejs: { versionIndex: '3' },
+  c: { versionIndex: '4' },
+  ruby: { versionIndex: '0' },
+  go: { versionIndex: '0' },
+  php: { versionIndex: '3' },
   scala: { versionIndex: '3' },
   bash: { versionIndex: '3' },
   sql: { versionIndex: '3' },
