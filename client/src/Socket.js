@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 export const initSocket = async () => {
     const options = {
         'force new connection': true,
-        reconnectionAttempts: 'Infinity',
+        reconnectionAttempts: Infinity, // Changed from string to number
         timeout: 10000,
         transports: ['websocket'],
     };
