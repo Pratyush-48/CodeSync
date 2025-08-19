@@ -151,9 +151,10 @@ function EditorPage() {
     
     try {
       const backendURL = getBackendURL();
-      const response = await axios.post(`${backendURL}/compile`, {
+      const response = await axios.post(`${backendURL}/api/compile`, {
         code: codeRef.current,
         language: selectedLanguage,
+        roomId: roomId
       });
       
       console.log("Backend response:", response.data);
