@@ -1,34 +1,30 @@
-import express from 'express';
-import http from 'http';
-import { Server } from 'socket.io';
-import cors from 'cors';
-import axios from 'axios';
-import dotenv from 'dotenv';
-import path, { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import ACTIONS from './Actions.js'; // 👈 must include .js extension
-
-dotenv.config();
-
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const cors = require('cors');
+const axios = require('axios');
+const ACTIONS = require('./Actions');
+require('dotenv').config();
+const path = require('path');
 const app = express();
 const server = http.createServer(app);
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const _dirname = path.resolve();
 
-// ✅ JDoodle supported languages
+
 const languageConfig = {
   python3: { versionIndex: '3' },
-  java: { versionIndex: '4' },
-  cpp: { versionIndex: '0' },
+  java: { versionIndex: '3' },
+  cpp: { versionIndex: '4' },
   nodejs: { versionIndex: '3' },
   c: { versionIndex: '4' },
-  ruby: { versionIndex: '0' },
-  go: { versionIndex: '0' },
-  php: { versionIndex: '3' },
+  ruby: { versionIndex: '3' },
+  go: { versionIndex: '3' },
   scala: { versionIndex: '3' },
   bash: { versionIndex: '3' },
   sql: { versionIndex: '3' },
   pascal: { versionIndex: '2' },
   csharp: { versionIndex: '3' },
+  php: { versionIndex: '3' },
   swift: { versionIndex: '3' },
   rust: { versionIndex: '3' },
   r: { versionIndex: '3' },
@@ -36,7 +32,6 @@ const languageConfig = {
 
 app.use(cors());
 app.use(express.json());
-
 const io = new Server(server, {
   cors: {
     origin: 'https://codesync-hmt6.onrender.com',
@@ -147,12 +142,6 @@ app.post('/compile', async (req, res) => {
   }
 
   try {
-    console.log("🔹 Compiling with JDoodle:", {
-      language,
-      versionIndex: languageConfig[language].versionIndex,
-      clientId: process.env.JDOODLE_CLIENT_ID ? "SET" : "MISSING"
-    });
-
     const response = await axios.post('https://api.jdoodle.com/v1/execute', {
       script: code,
       language: language,
@@ -169,7 +158,7 @@ app.post('/compile', async (req, res) => {
 
     res.json(response.data);
   } catch (error) {
-    console.error('❌ Compilation error:', error.response?.data || error.message);
+    console.error('Compilation error:', error);
     res.status(500).json({ 
       error: 'Failed to compile code',
       details: error.response?.data || error.message 
@@ -179,11 +168,10 @@ app.post('/compile', async (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
-
-// ✅ Serve React build files
 const buildPath = path.join(__dirname, '..', 'client', 'build');
+
 app.use(express.static(buildPath));
 
 app.get('*', (_, res) => {
