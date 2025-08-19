@@ -181,19 +181,19 @@ function EditorPage() {
       setOutput(result);
       outputRef.current = result;
       
-      socketRef.current.emit(ACTIONS.OUTPUT_CHANGE, {
-        roomId,
-        output: result
-      });
+      // socketRef.current.emit(ACTIONS.OUTPUT_CHANGE, {
+      //   roomId,
+      //   output: result
+      // });
     } catch (error) {
       const errorMessage = error.response?.data?.error || "An error occurred";
       setOutput(errorMessage);
       outputRef.current = errorMessage;
       
-      socketRef.current.emit(ACTIONS.OUTPUT_CHANGE, {
-        roomId,
-        output: errorMessage
-      });
+      // socketRef.current.emit(ACTIONS.OUTPUT_CHANGE, {
+      //   roomId,
+      //   output: errorMessage
+      // });
     } finally {
       setIsCompiling(false);
     }
