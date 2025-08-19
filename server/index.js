@@ -129,43 +129,24 @@ io.on('connection', (socket) => {
   });
 });
 
-app.post('/compile', async (req, res) => {
-  const { code, language, roomId } = req.body;
-
-  if (!code || !language) {
-    return res.status(400).json({ error: 'Code and language are required' });
-  }
-
-  if (!languageConfig[language]) {
-    return res.status(400).json({ error: 'Unsupported language' });
-  }
+app.post("/compile", async (req, res) => {
+  const { code, language } = req.body;
 
   try {
-    const response = await axios.post('https://api.jdoodle.com/v1/execute', {
+    const response = await axios.post("https://api.jdoodle.com/v1/execute", {
       script: code,
       language: language,
       versionIndex: languageConfig[language].versionIndex,
-      clientId: process.env.JDOODLE_CLIENT_ID,
-      clientSecret: process.env.JDOODLE_CLIENT_SECRET,
+      clientId: process.env.jDoodle_clientId,
+      clientSecret: process.env.kDoodle_clientSecret,
     });
-
-    // Broadcast output to room if roomId is provided
-    if (roomId) {
-      io.to(roomId).emit(ACTIONS.OUTPUT_CHANGE, {
-        output: response.data
-      });
-    }
 
     res.json(response.data);
   } catch (error) {
-    console.error('Compilation error:', error);
-    res.status(500).json({ 
-      error: 'Failed to compile code',
-      details: error.response?.data || error.message 
-    });
+    console.error(error);
+    res.status(500).json({ error: "Failed to compile code" });
   }
 });
-
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
