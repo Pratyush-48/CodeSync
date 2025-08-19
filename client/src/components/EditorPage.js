@@ -171,7 +171,7 @@ function EditorPage() {
 
     setIsCompiling(true);
     try {
-      const response = await axios.post("http://localhost:5000/compile", {
+      const response = await axios.post("https://codesync-hmt6.onrender.com", {
         code: codeRef.current,
         language: selectedLanguage,
         roomId
