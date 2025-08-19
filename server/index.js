@@ -1,15 +1,18 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const axios = require('axios');
-const ACTIONS = require('./Actions');
-require('dotenv').config();
-const path = require('path');
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import axios from 'axios';
+import ACTIONS from './Actions.js';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const app = express();
-const server = http.createServer(app);
-const __dirname = path.resolve();
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config();
 
 const languageConfig = {
   python3: { versionIndex: '3' },
@@ -29,6 +32,9 @@ const languageConfig = {
   rust: { versionIndex: '3' },
   r: { versionIndex: '3' },
 };
+
+const app = express();
+const server = http.createServer(app);
 
 // Middleware
 app.use(cors({
@@ -180,7 +186,7 @@ app.post('/api/compile', async (req, res) => {
 });
 
 // Serve static files from React build directory
-const buildPath = path.join(__dirname, 'client', 'build');
+const buildPath = path.join(__dirname, '..', 'client', 'build');
 app.use(express.static(buildPath));
 
 // Handle React routing, return all requests to React app
