@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import Client from "./Client";
 import Editor from "./Editor";
 import { initSocket } from "../Socket";
-import ACTIONS from "../Actions";
+import { ACTIONS } from "../Actions";
 import {
   useNavigate,
   useLocation,
