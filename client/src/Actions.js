@@ -1,6 +1,6 @@
 // All the events
 
-const ACTIONS = {
+export const ACTIONS = {
   JOIN: 'join',
   JOINED: 'joined',
   DISCONNECTED: 'disconnected',
@@ -13,4 +13,4 @@ const ACTIONS = {
   LEFT: 'left'
 };
 
-export default ACTIONS;
+
