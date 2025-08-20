@@ -1,16 +1,16 @@
 // All the events
 
-export const ACTIONS = {
-  JOIN: "join",
-  JOINED: "joined",
-  DISCONNECTED: "disconnected",
-  CODE_CHANGE: "code-change",
-  SYNC_CODE: "sync-code",
-  LANGUAGE_CHANGE: "language-change",
-  LEAVE: "leave",
-  LEFT: "left",
-  OUTPUT_CHUNK: 'output-chunk',
-  COMPILATION_STARTED: 'compilation-started',
-  COMPILATION_ERROR: 'compilation-error',
-  CONNECTION_RECOVERED: 'connection-recovered'
+const ACTIONS = {
+  JOIN: 'join',
+  JOINED: 'joined',
+  DISCONNECTED: 'disconnected',
+  CODE_CHANGE: 'code-change',
+  SYNC_CODE: 'sync-code',
+  SYNC_REQUEST: 'sync-request',
+  LANGUAGE_CHANGE: 'language-change',
+  OUTPUT_CHANGE: 'output-change',
+  LEAVE: 'leave',
+  LEFT: 'left'
 };
+
+export default ACTIONS;
