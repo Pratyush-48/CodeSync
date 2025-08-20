@@ -39,7 +39,7 @@ function EditorPage() {
   const [selectedLanguage, setSelectedLanguage] = useState("cpp");
   const [socketConnected, setSocketConnected] = useState(false);
 
-  const codeRef = useRef(null);
+  const codeRef = useRef("");
   const outputRef = useRef("");
   
   const location = useLocation();
@@ -63,7 +63,7 @@ function EditorPage() {
         setSocketConnected(true);
 
         const handleErrors = (err) => {
-          console.log("Error", err);
+          console.log("Socket error", err);
           toast.error("Socket connection failed, Try again later");
           navigate("/");
         };
@@ -83,10 +83,14 @@ function EditorPage() {
               toast.success(`${username} joined the room.`);
             }
             setClients(clients);
-            socketRef.current.emit(ACTIONS.SYNC_CODE, {
-              code: codeRef.current,
-              socketId,
-            });
+            
+            // Request code sync from the first client in the room
+            if (clients.length > 1 && clients[0].socketId !== socketRef.current.id) {
+              socketRef.current.emit(ACTIONS.SYNC_REQUEST, {
+                roomId,
+                targetSocketId: clients[0].socketId
+              });
+            }
           }
         );
 
@@ -95,6 +99,10 @@ function EditorPage() {
           setClients((prev) => {
             return prev.filter((client) => client.socketId !== socketId);
           });
+        });
+
+        socketRef.current.on(ACTIONS.CODE_CHANGE, ({ code }) => {
+          codeRef.current = code;
         });
 
         socketRef.current.on(ACTIONS.LANGUAGE_CHANGE, ({ language }) => {
@@ -106,8 +114,21 @@ function EditorPage() {
           outputRef.current = output;
         });
 
+        socketRef.current.on(ACTIONS.SYNC_REQUEST, ({ targetSocketId }) => {
+          socketRef.current.emit(ACTIONS.SYNC_CODE, {
+            code: codeRef.current,
+            socketId: targetSocketId,
+            roomId
+          });
+        });
+
+        socketRef.current.on(ACTIONS.SYNC_CODE, ({ code }) => {
+          codeRef.current = code;
+        });
+
         socketRef.current.on("disconnect", () => {
           setSocketConnected(false);
+          toast.error("Connection lost. Trying to reconnect...");
         });
 
         socketRef.current.on("reconnect", () => {
@@ -116,6 +137,7 @@ function EditorPage() {
             roomId,
             username: usernameRef.current,
           });
+          toast.success("Reconnected successfully!");
         });
 
       } catch (err) {
@@ -131,8 +153,11 @@ function EditorPage() {
       if (socketRef.current) {
         socketRef.current.off(ACTIONS.JOINED);
         socketRef.current.off(ACTIONS.DISCONNECTED);
+        socketRef.current.off(ACTIONS.CODE_CHANGE);
         socketRef.current.off(ACTIONS.LANGUAGE_CHANGE);
         socketRef.current.off(ACTIONS.OUTPUT_CHANGE);
+        socketRef.current.off(ACTIONS.SYNC_REQUEST);
+        socketRef.current.off(ACTIONS.SYNC_CODE);
         socketRef.current.off("connect_error");
         socketRef.current.off("connect_failed");
         socketRef.current.off("disconnect");
@@ -193,10 +218,22 @@ function EditorPage() {
       setOutput(result);
       outputRef.current = result;
       
+      // Broadcast output to all clients
+      socketRef.current.emit(ACTIONS.OUTPUT_CHANGE, {
+        roomId,
+        output: result
+      });
+      
     } catch (error) {
       const errorMessage = error.response?.data?.error || "An error occurred";
       setOutput(errorMessage);
       outputRef.current = errorMessage;
+      
+      // Broadcast error to all clients
+      socketRef.current.emit(ACTIONS.OUTPUT_CHANGE, {
+        roomId,
+        output: errorMessage
+      });
       
     } finally {
       setIsCompiling(false);
@@ -210,6 +247,12 @@ function EditorPage() {
   const clearOutput = () => {
     setOutput("");
     outputRef.current = "";
+    
+    // Broadcast clear output to all clients
+    socketRef.current.emit(ACTIONS.OUTPUT_CHANGE, {
+      roomId,
+      output: ""
+    });
   };
 
   return (
@@ -225,6 +268,13 @@ function EditorPage() {
             <span style={styles.roomLabel}>Room:</span>
             <span style={styles.roomId}>{roomId.substring(0, 8)}...</span>
           </div>
+          <div style={styles.connectionStatus}>
+            <div style={{
+              ...styles.statusDot,
+              backgroundColor: socketConnected ? '#4CAF50' : '#F44336'
+            }}></div>
+            <span>{socketConnected ? 'Connected' : 'Disconnected'}</span>
+          </div>
         </div>
         
         <div style={styles.membersContainer}>
@@ -235,7 +285,11 @@ function EditorPage() {
           </div>
           <div style={styles.membersList}>
             {clients.map((client) => (
-              <Client key={client.socketId} username={client.username} />
+              <Client 
+                key={client.socketId} 
+                username={client.username} 
+                isCurrentUser={client.username === usernameRef.current}
+              />
             ))}
           </div>
         </div>
@@ -280,7 +334,15 @@ function EditorPage() {
         <Editor
           socketRef={socketRef}
           roomId={roomId}
-          onCodeChange={(code) => { codeRef.current = code; }}
+          onCodeChange={(code) => { 
+            codeRef.current = code;
+            // Broadcast code change to all clients
+            socketRef.current.emit(ACTIONS.CODE_CHANGE, {
+              roomId,
+              code
+            });
+          }}
+          initialCode={codeRef.current}
         />
       </div>
 
@@ -357,318 +419,244 @@ const styles = {
   container: {
     display: 'flex',
     height: '100vh',
-    backgroundColor: '#0f172a',
-    color: '#e2e8f0',
-    overflow: 'hidden',
-    fontFamily: "'Inter', sans-serif"
+    backgroundColor: '#1e1e1e',
+    color: '#fff',
+    fontFamily: 'Arial, sans-serif',
+    position: 'relative',
   },
   sidebar: {
-    width: '280px',
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-    backdropFilter: 'blur(10px)',
+    width: '250px',
+    backgroundColor: '#252526',
     display: 'flex',
     flexDirection: 'column',
-    padding: '20px',
-    borderRight: '1px solid rgba(255,255,255,0.05)',
-    boxShadow: '4px 0 15px rgba(0,0,0,0.1)',
-    zIndex: 2
+    borderRight: '1px solid rgba(255,255,255,0.1)',
   },
   logoContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    marginBottom: '30px',
-    paddingBottom: '20px',
-    borderBottom: '1px solid rgba(255,255,255,0.05)'
+    padding: '16px',
+    borderBottom: '1px solid rgba(255,255,255,0.1)',
   },
   logo: {
-    height: '50px',
-    marginBottom: '15px',
-    filter: 'drop-shadow(0 0 10px rgba(96, 165, 250, 0.5))'
+    width: '40px',
+    height: '40px',
+    marginBottom: '12px',
   },
   roomIndicator: {
     display: 'flex',
-    alignItems: 'center',
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-    padding: '6px 12px',
-    borderRadius: '20px',
-    fontSize: '12px'
+    flexDirection: 'column',
+    marginBottom: '12px',
   },
   roomLabel: {
-    color: '#94a3b8',
-    marginRight: '6px'
+    fontSize: '12px',
+    color: '#aaa',
+    marginBottom: '4px',
   },
   roomId: {
-    fontWeight: '600',
-    color: '#e2e8f0'
+    fontSize: '14px',
+    fontWeight: 'bold',
+  },
+  connectionStatus: {
+    display: 'flex',
+    alignItems: 'center',
+    fontSize: '12px',
+  },
+  statusDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    marginRight: '8px',
   },
   membersContainer: {
     flex: 1,
-    overflow: 'hidden',
-    display: 'flex',
-    flexDirection: 'column'
+    padding: '16px',
+    overflowY: 'auto',
   },
   sectionHeader: {
     display: 'flex',
     alignItems: 'center',
-    marginBottom: '15px',
-    paddingBottom: '10px',
-    borderBottom: '1px solid rgba(255,255,255,0.05)'
+    marginBottom: '16px',
   },
   sectionIcon: {
-    color: '#60a5fa',
-    marginRight: '10px',
-    fontSize: '14px'
+    marginRight: '8px',
+    color: '#aaa',
   },
   sectionTitle: {
+    margin: '0',
     fontSize: '14px',
-    fontWeight: '600',
-    color: '#cbd5e0',
-    margin: 0,
-    flex: 1
+    flex: 1,
   },
   memberCount: {
-    backgroundColor: 'rgba(96, 165, 250, 0.2)',
-    color: '#60a5fa',
-    padding: '2px 8px',
-    borderRadius: '10px',
+    backgroundColor: '#007acc',
+    borderRadius: '8px',
+    padding: '2px 6px',
     fontSize: '12px',
-    fontWeight: '600'
   },
   membersList: {
-    flex: 1,
-    overflowY: 'auto',
-    paddingRight: '8px'
-  },
-  sidebarButtons: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '12px',
-    marginTop: '20px'
+    gap: '8px',
   },
-  buttonIcon: {
-    marginRight: '8px'
+  sidebarButtons: {
+    padding: '16px',
+    borderTop: '1px solid rgba(255,255,255,0.1)',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
   },
   copyButton: {
-    backgroundColor: 'rgba(56, 161, 105, 0.2)',
-    color: '#38a169',
-    border: '1px solid rgba(56, 161, 105, 0.3)',
-    padding: '10px',
-    borderRadius: '8px',
+    backgroundColor: '#007acc',
+    color: 'white',
+    border: 'none',
+    padding: '8px 12px',
+    borderRadius: '4px',
     cursor: 'pointer',
-    fontWeight: '500',
-    fontSize: '14px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'all 0.2s',
-    ':hover': {
-      backgroundColor: 'rgba(56, 161, 105, 0.3)'
-    }
   },
   leaveButton: {
-    backgroundColor: 'rgba(229, 62, 62, 0.2)',
-    color: '#e53e3e',
-    border: '1px solid rgba(229, 62, 62, 0.3)',
-    padding: '10px',
-    borderRadius: '8px',
+    backgroundColor: '#d32f2f',
+    color: 'white',
+    border: 'none',
+    padding: '8px 12px',
+    borderRadius: '4px',
     cursor: 'pointer',
-    fontWeight: '500',
-    fontSize: '14px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'all 0.2s',
-    ':hover': {
-      backgroundColor: 'rgba(229, 62, 62, 0.3)'
-    }
+  },
+  buttonIcon: {
+    marginRight: '8px',
   },
   editorArea: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    overflow: 'hidden',
-    position: 'relative'
   },
   toolbar: {
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-    padding: '12px 20px',
-    display: 'flex',
-    justifyContent: 'flex-end',
-    backdropFilter: 'blur(5px)',
-    borderBottom: '1px solid rgba(255,255,255,0.05)',
-    zIndex: 1
+    padding: '8px 16px',
+    backgroundColor: '#2d2d30',
+    borderBottom: '1px solid rgba(255,255,255,0.1)',
   },
   languageSelector: {
     display: 'flex',
     alignItems: 'center',
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-    borderRadius: '6px',
-    padding: '4px 8px',
-    border: '1px solid rgba(74, 85, 104, 0.5)'
   },
   selectorIcon: {
-    color: '#60a5fa',
     marginRight: '8px',
-    fontSize: '14px'
+    color: '#aaa',
   },
   languageSelect: {
-    backgroundColor: 'transparent',
+    backgroundColor: '#3e3e42',
     color: 'white',
     border: 'none',
     padding: '4px 8px',
-    fontSize: '14px',
-    outline: 'none',
-    cursor: 'pointer',
-    appearance: 'none',
-    fontWeight: '500'
+    borderRadius: '4px',
   },
   option: {
-    backgroundColor: '#1e293b',
-    padding: '8px'
+    backgroundColor: '#3e3e42',
   },
   compilerToggle: {
-    position: 'fixed',
-    bottom: '25px',
-    right: '25px',
-    backgroundColor: '#60a5fa',
+    position: 'absolute',
+    bottom: '0',
+    right: '0',
+    margin: '16px',
+    backgroundColor: '#007acc',
     color: 'white',
     border: 'none',
-    padding: '12px 20px',
-    borderRadius: '50px',
+    padding: '8px 16px',
+    borderRadius: '4px',
     cursor: 'pointer',
-    fontWeight: '500',
-    zIndex: 100,
-    boxShadow: '0 4px 15px rgba(96, 165, 250, 0.3)',
     display: 'flex',
     alignItems: 'center',
-    transition: 'all 0.3s ease',
-    ':hover': {
-      backgroundColor: '#3b82f6',
-      transform: 'translateY(-2px)'
-    }
+    zIndex: 10,
   },
   toggleIcon: {
     marginRight: '8px',
-    fontSize: '14px'
   },
   compilerPanel: {
-    position: 'fixed',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-    backdropFilter: 'blur(10px)',
+    position: 'absolute',
+    bottom: '0',
+    left: '0',
+    right: '0',
+    backgroundColor: '#1e1e1e',
     overflow: 'hidden',
-    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-    zIndex: 99,
+    transition: 'all 0.3s ease',
     display: 'flex',
-    flexDirection: 'column'
+    flexDirection: 'column',
   },
   compilerHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: '12px',
-    paddingBottom: '12px',
-    borderBottom: '1px solid rgba(255,255,255,0.05)'
   },
   outputHeader: {
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   outputIcon: {
-    color: '#60a5fa',
-    marginRight: '10px',
-    fontSize: '18px'
+    marginRight: '8px',
+    color: '#4CAF50',
   },
   compilerTitle: {
-    fontSize: '15px',
-    fontWeight: '600',
-    margin: 0,
-    color: '#e2e8f0',
-    display: 'flex',
-    alignItems: 'center'
+    margin: '0',
+    fontSize: '14px',
   },
   statusIndicator: {
-    color: '#94a3b8',
-    fontSize: '13px',
-    marginLeft: '8px',
-    fontWeight: 'normal'
+    color: '#FFC107',
+    fontSize: '12px',
   },
   compilerActions: {
     display: 'flex',
-    gap: '10px'
+    gap: '8px',
+  },
+  runButton: {
+    backgroundColor: '#4CAF50',
+    color: 'white',
+    border: 'none',
+    padding: '6px 12px',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  runButtonDisabled: {
+    backgroundColor: '#81C784',
+    cursor: 'not-allowed',
+  },
+  clearButton: {
+    backgroundColor: '#F44336',
+    color: 'white',
+    border: 'none',
+    padding: '6px 12px',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+  },
+  closeButton: {
+    backgroundColor: '#9E9E9E',
+    color: 'white',
+    border: 'none',
+    padding: '6px 12px',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
   },
   actionIcon: {
     marginRight: '6px',
-    fontSize: '12px'
-  },
-  runButton: {
-    backgroundColor: 'rgba(56, 161, 105, 0.2)',
-    color: '#38a169',
-    border: '1px solid rgba(56, 161, 105, 0.3)',
-    padding: '8px 14px',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: '500',
-    fontSize: '13px',
-    display: 'flex',
-    alignItems: 'center',
-    transition: 'all 0.2s',
-    ':hover': {
-      backgroundColor: 'rgba(56, 161, 105, 0.3)'
-    }
-  },
-  runButtonDisabled: {
-    opacity: 0.7,
-    cursor: 'not-allowed'
-  },
-  clearButton: {
-    backgroundColor: 'rgba(245, 158, 11, 0.2)',
-    color: '#f59e0b',
-    border: '1px solid rgba(245, 158, 11, 0.3)',
-    padding: '8px 14px',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: '500',
-    fontSize: '13px',
-    display: 'flex',
-    alignItems: 'center',
-    transition: 'all 0.2s',
-    ':hover': {
-      backgroundColor: 'rgba(245, 158, 11, 0.3)'
-    }
-  },
-  closeButton: {
-    backgroundColor: 'rgba(74, 85, 104, 0.2)',
-    color: '#cbd5e0',
-    border: '1px solid rgba(74, 85, 104, 0.3)',
-    padding: '8px 14px',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: '500',
-    fontSize: '13px',
-    display: 'flex',
-    alignItems: 'center',
-    transition: 'all 0.2s',
-    ':hover': {
-      backgroundColor: 'rgba(74, 85, 104, 0.3)'
-    }
   },
   output: {
     flex: 1,
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-    padding: '15px',
-    borderRadius: '6px',
-    margin: 0,
+    backgroundColor: '#2d2d30',
+    padding: '12px',
+    borderRadius: '4px',
+    overflow: 'auto',
+    margin: '0',
     whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    overflowY: 'auto',
-    fontFamily: "'Fira Code', monospace",
     fontSize: '14px',
-    lineHeight: '1.5',
-    color: '#e2e8f0'
+    fontFamily: 'monospace',
   },
   placeholder: {
     display: 'flex',
@@ -676,14 +664,12 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     height: '100%',
-    color: '#64748b',
-    fontSize: '14px'
+    color: '#aaa',
   },
   placeholderIcon: {
     fontSize: '24px',
-    marginBottom: '10px',
-    opacity: 0.5
-  }
+    marginBottom: '8px',
+  },
 };
 
 export default EditorPage;
