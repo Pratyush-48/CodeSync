@@ -59,7 +59,7 @@ function EditorPage() {
   useEffect(() => {
     const init = async () => {
       try {
-        socketRef.current = await initSocket();
+        socketRef.current = initSocket();
         setSocketConnected(true);
 
         const handleErrors = (err) => {
