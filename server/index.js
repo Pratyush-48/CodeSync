@@ -58,6 +58,9 @@ const io = new Server(server, {
 
 const userSocketMap = {};
 const roomSocketMap = {};
+const roomCodeMap = {};
+const roomLanguageMap = {};
+const roomOutputMap = {};
 
 const getAllConnectedClients = (roomId) => {
   const room = io.sockets.adapter.rooms.get(roomId);
@@ -83,7 +86,17 @@ io.on('connection', (socket) => {
     roomSocketMap[socket.id] = roomId;
     socket.join(roomId);
 
+    // Initialize room data if it doesn't exist
+    if (!roomCodeMap[roomId]) roomCodeMap[roomId] = "";
+    if (!roomLanguageMap[roomId]) roomLanguageMap[roomId] = "cpp";
+    if (!roomOutputMap[roomId]) roomOutputMap[roomId] = "";
+
     const clients = getAllConnectedClients(roomId);
+    
+    // Send current room state to the new client
+    socket.emit(ACTIONS.CODE_CHANGE, { code: roomCodeMap[roomId] });
+    socket.emit(ACTIONS.LANGUAGE_CHANGE, { language: roomLanguageMap[roomId] });
+    socket.emit(ACTIONS.OUTPUT_CHANGE, { output: roomOutputMap[roomId] });
     
     // Notify all clients in the room about the new user
     clients.forEach(({ socketId }) => {
@@ -97,24 +110,37 @@ io.on('connection', (socket) => {
 
   // Handle code changes and broadcast to room
   socket.on(ACTIONS.CODE_CHANGE, ({ roomId, code }) => {
-    socket.in(roomId).emit(ACTIONS.CODE_CHANGE, { code });
-  });
-
-  // Sync code with a specific client (when they join)
-  socket.on(ACTIONS.SYNC_CODE, ({ code, socketId }) => {
-    if (io.sockets.sockets.has(socketId)) {
-      io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
-    }
+    roomCodeMap[roomId] = code;
+    socket.to(roomId).emit(ACTIONS.CODE_CHANGE, { code });
   });
 
   // Handle language changes and broadcast to room
   socket.on(ACTIONS.LANGUAGE_CHANGE, ({ roomId, language }) => {
-    socket.in(roomId).emit(ACTIONS.LANGUAGE_CHANGE, { language });
+    roomLanguageMap[roomId] = language;
+    socket.to(roomId).emit(ACTIONS.LANGUAGE_CHANGE, { language });
   });
 
   // Handle output changes and broadcast to room
   socket.on(ACTIONS.OUTPUT_CHANGE, ({ roomId, output }) => {
-    socket.in(roomId).emit(ACTIONS.OUTPUT_CHANGE, { output });
+    roomOutputMap[roomId] = output;
+    socket.to(roomId).emit(ACTIONS.OUTPUT_CHANGE, { output });
+  });
+
+  // Handle sync request (when a new client joins)
+  socket.on(ACTIONS.SYNC_REQUEST, ({ roomId, targetSocketId }) => {
+    if (io.sockets.sockets.has(targetSocketId)) {
+      io.to(targetSocketId).emit(ACTIONS.SYNC_REQUEST, {
+        roomId,
+        requesterSocketId: socket.id
+      });
+    }
+  });
+
+  // Handle sync code (send code to requesting client)
+  socket.on(ACTIONS.SYNC_CODE, ({ roomId, code, socketId }) => {
+    if (io.sockets.sockets.has(socketId)) {
+      io.to(socketId).emit(ACTIONS.CODE_CHANGE, { code });
+    }
   });
 
   // Handle user leaving intentionally
@@ -211,9 +237,12 @@ app.post('/api/compile', async (req, res) => {
       clientSecret: process.env.JDOODLE_CLIENT_SECRET,
     });
 
-    // Broadcast output to all clients in the room if roomId is provided
+    // Update room output
     if (roomId) {
       const output = response.data.output || JSON.stringify(response.data);
+      roomOutputMap[roomId] = output;
+      
+      // Broadcast output to all clients in the room
       io.to(roomId).emit(ACTIONS.OUTPUT_CHANGE, { output });
     }
 
@@ -225,6 +254,7 @@ app.post('/api/compile', async (req, res) => {
     
     // Broadcast error to all clients in the room if roomId is provided
     if (roomId) {
+      roomOutputMap[roomId] = `Error: ${errorMessage}`;
       io.to(roomId).emit(ACTIONS.OUTPUT_CHANGE, { 
         output: `Error: ${errorMessage}` 
       });
