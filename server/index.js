@@ -99,12 +99,10 @@ io.on('connection', (socket) => {
     socket.emit(ACTIONS.OUTPUT_CHANGE, { output: roomOutputMap[roomId] });
     
     // Notify all clients in the room about the new user
-    clients.forEach(({ socketId }) => {
-      io.to(socketId).emit(ACTIONS.JOINED, {
-        clients,
-        username,
-        socketId: socket.id,
-      });
+    io.to(roomId).emit(ACTIONS.JOINED, {
+      clients,
+      username,
+      socketId: socket.id,
     });
   });
 
